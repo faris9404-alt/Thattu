@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#0f6b45">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<title>Thattu</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<style>
+:root{--ink:#17352a;--mute:#5d7468;--green:#0f6b45;--gold:#f2b01e;--chilli:#d8352a;--line:#d5e3d9}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0}
+body{font:16px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;color:var(--ink);background:#fff;-webkit-tap-highlight-color:transparent}
+#app{height:100dvh;display:flex;flex-direction:column;position:relative;max-width:520px;margin:0 auto}
+button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
+h1,h2{margin:0;line-height:1.2}
+.brand{font-size:24px;font-weight:800;color:var(--green)}
+.pad{padding:calc(env(safe-area-inset-top,0px) + 20px) 16px 24px}
+.scroll{overflow-y:auto;flex:1}
+.top2{display:flex;justify-content:space-between;align-items:center}
+.meta{color:var(--mute);font-size:14px}
+.btn{display:block;width:100%;margin-top:14px;padding:15px;border-radius:14px;background:var(--green);color:#fff;font-weight:700;text-align:center}
+.btn.alt{background:var(--gold);color:#2a1d00}
+.btn:disabled{opacity:.6}
+.lnk{color:var(--green);font-weight:700;padding:8px 4px}
+.chips{display:flex;gap:8px;overflow-x:auto;padding:12px 0}
+.chip{flex:none;padding:8px 14px;border-radius:99px;border:1.5px solid var(--line);font-weight:600}
+.chip[aria-pressed=true]{background:var(--gold);border-color:var(--gold);color:#2a1d00}
+.item{display:flex;align-items:center;gap:12px;padding:12px 0;border-bottom:1px solid var(--line)}
+.txt{flex:1}
+.step{display:flex;align-items:center;border:1.5px solid var(--green);border-radius:10px;overflow:hidden}
+.step button{width:36px;height:36px;font-size:20px;font-weight:700;color:var(--green)}
+.step span{min-width:26px;text-align:center;font-weight:700}
+label{display:block;margin:16px 0 6px;font-weight:700}
+input[type=text],input[type=tel],input:not([type]){width:100%;padding:12px;border:1.5px solid var(--line);border-radius:12px;font:inherit}
+.err{color:var(--chilli);font-size:14px;min-height:20px;margin-top:6px}
+#map{flex:1;min-height:0}
+.top{position:absolute;z-index:1000;top:calc(env(safe-area-inset-top,0px) + 8px);left:10px;right:10px;display:flex;justify-content:space-between;align-items:center;background:#fff;border-radius:14px;padding:8px 12px;box-shadow:0 2px 10px rgba(0,0,0,.25)}
+.top .r{display:flex;align-items:center;gap:6px}
+.sw{display:flex;align-items:center;gap:8px;margin:0;font-weight:700}
+.sw input{width:22px;height:22px}
+.card{padding:18px 16px calc(18px + env(safe-area-inset-bottom,0px));background:#fff;border-radius:22px 22px 0 0;box-shadow:0 -4px 14px rgba(0,0,0,.15);position:relative;z-index:1000}
+.card h2{font-size:20px}
+.hint{text-align:center;color:var(--mute);padding:10px 0}
+</style></head>
+<body><div id="app"></div>
+<script>
+var $=function(id){return document.getElementById(id)};
+var LS={g:function(k){try{return localStorage.getItem(k)}catch(e){return null}},s:function(k,v){try{localStorage.setItem(k,v)}catch(e){}}};
+function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]})}
+var DB=LS.g('db')||'',T={poll:null,watch:null,wl:null};
+function api(p,m,b){return fetch(DB+'/'+p+'.json',{method:m||'GET',headers:{'Content-Type':'application/json'},body:b?JSON.stringify(b):undefined}).then(function(r){if(!r.ok)throw 0;return r.json()})}
+function stop(){clearInterval(T.poll);if(T.watch!=null&&navigator.geolocation)navigator.geolocation.clearWatch(T.watch);T.watch=null;try{if(T.wl)T.wl.release()}catch(e){}T.wl=null}
+function mkmap(){var m=L.map('map',{zoomControl:false}).setView([11.0168,76.9558],14);L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'&copy; OpenStreetMap contributors'}).addTo(m);return m}
+function dot(m,p,c,r){return L.circleMarker(p,{radius:r||9,color:'#fff',weight:3,fillColor:c,fillOpacity:1}).addTo(m)}
+
+/* ---------- setup + role ---------- */
+function setup(){stop();$('app').innerHTML='<div class="pad"><h1 class="brand">Thattu</h1><p>Paste your Firebase Realtime Database URL once. Customer and rider phones must use the same URL.</p><input id="u" placeholder="https://yourapp-default-rtdb.firebaseio.com" value="'+esc(DB)+'"><div class="err" id="e"></div><button class="btn" onclick="saveDb()">Save</button></div>'}
+function saveDb(){var v=$('u').value.trim().replace(/\.json$/,'').replace(/\/+$/,'');if(!/^https:\/\/.+\..+/.test(v)){$('e').textContent='Enter the full URL starting with https://';return}DB=v;LS.s('db',v);role()}
+function role(){stop();$('app').innerHTML='<div class="pad"><h1 class="brand">Thattu</h1><p>Who is using this phone?</p><button class="btn" onclick="LS.s(\'role\',\'c\');customer()">🍛 I\'m a customer</button><button class="btn alt" onclick="LS.s(\'role\',\'r\');rider()">🛵 I\'m a rider</button><button class="lnk" onclick="setup()">Change database URL</button></div>'}
+
+/* ---------- customer ---------- */
+var RESTS=[{n:'Annapoorna Meals',e:'🍛',at:[11.0183,76.9725],m:[['Full meals',140],['Ghee pongal',90],['Masala dosa',85],['Filter coffee',35]]},{n:'Kongu Biryani House',e:'🍗',at:[11.01,76.965],m:[['Chicken biryani',220],['Veg biryani',160],['Chicken 65',180]]},{n:'Sweet Mane',e:'🍮',at:[11.023,76.96],m:[['Gulab jamun (2)',60],['Mysore pak',80],['Payasam',70]]}];
+var ST={placed:'Waiting for a rider to accept',accepted:'Rider is heading to the restaurant',pickedup:'Your food is on the way',delivered:'Delivered. Enjoy your meal!'};
+var C={ri:0,cart:{},addr:'',ph:''};
+function sub(){var r=RESTS[C.ri],t=0;for(var i in C.cart)t+=C.cart[i]*r.m[i][1];return t}
+function customer(){stop();var o=LS.g('oid');if(o){track(o);return}
+ $('app').innerHTML='<div class="scroll pad"><div class="top2"><span class="brand">Thattu</span><button class="lnk" onclick="role()">Switch</button></div><div class="meta">Deliver to Coimbatore</div><div class="chips" id="ch"></div><div id="it"></div><label for="ad">Delivery address</label><input id="ad" placeholder="House no., street, area" value="'+esc(C.addr)+'" oninput="C.addr=this.value"><label for="ph">Phone number</label><input id="ph" type="tel" inputmode="numeric" maxlength="10" placeholder="10-digit mobile number" value="'+esc(C.ph)+'" oninput="C.ph=this.value"><div class="err" id="er"></div><button class="btn" id="pl" onclick="place()"></button><div class="meta" style="margin-top:8px">Cash on delivery. Delivery fee ₹30.</div></div>';
+ items()}
+function items(){var r=RESTS[C.ri];
+ $('ch').innerHTML=RESTS.map(function(x,i){return '<button class="chip" aria-pressed="'+(i==C.ri)+'" onclick="C.ri='+i+';C.cart={};items()">'+x.e+' '+x.n+'</button>'}).join('');
+ $('it').innerHTML=r.m.map(function(m,i){return '<div class="item"><div class="txt"><b>'+m[0]+'</b><div class="meta">₹'+m[1]+'</div></div><div class="step"><button aria-label="Remove one" onclick="qty('+i+',-1)">−</button><span>'+(C.cart[i]||0)+'</span><button aria-label="Add one" onclick="qty('+i+',1)">+</button></div></div>'}).join('');
+ var s=sub();$('pl').textContent='Place order · ₹'+(s?s+30:0)}
+function qty(i,d){C.cart[i]=Math.max(0,(C.cart[i]||0)+d);items()}
+function place(){var er=$('er'),r=RESTS[C.ri],its=[];
+ for(var i in C.cart)if(C.cart[i]>0)its.push(C.cart[i]+'x '+r.m[i][0]);
+ if(!its.length){er.textContent='Add at least one dish.';return}
+ if(C.addr.trim().length<6){er.textContent='Enter your full delivery address.';return}
+ if(!/^[6-9]\d{9}$/.test(C.ph)){er.textContent='Enter a valid 10-digit mobile number.';return}
+ er.textContent='';$('pl').disabled=true;$('pl').textContent='Placing order…';
+ var send=function(la,ln){api('orders','POST',{rest:r.n,pickup:{lat:r.at[0],lng:r.at[1]},drop:{lat:la,lng:ln},addr:C.addr,phone:C.ph,items:its,total:sub()+30,status:'placed',t:Date.now()}).then(function(x){LS.s('oid',x.name);C.cart={};track(x.name)}).catch(function(){er.textContent='Could not place the order. Check your internet and the database URL.';$('pl').disabled=false;items()})};
+ if(navigator.geolocation)navigator.geolocation.getCurrentPosition(function(p){send(p.coords.latitude,p.coords.longitude)},function(){send(11.005,76.961)},{timeout:8000});else send(11.005,76.961)}
+function track(id){stop();
+ $('app').innerHTML='<div id="map"></div><div class="card" id="card"><h2>Finding your order…</h2></div>';
+ var m=mkmap(),pts=false,rd=null;
+ function tick(){api('orders/'+id).then(function(o){
+  if(!o){LS.s('oid','');customer();return}
+  if(!pts){pts=true;var a=[o.pickup.lat,o.pickup.lng],b=[o.drop.lat,o.drop.lng];dot(m,a,'#0f6b45');dot(m,b,'#d8352a');m.fitBounds([a,b],{padding:[60,60]})}
+  if(o.rider){var p=[o.rider.lat,o.rider.lng];if(!rd)rd=dot(m,p,'#1a73e8',11);else rd.setLatLng(p)}
+  $('card').innerHTML='<h2>'+ST[o.status]+'</h2><div class="meta">'+esc(o.rest)+' · ₹'+o.total+'</div><div class="meta">Green: restaurant · Red: you · Blue: rider</div>'+(o.status=='delivered'?'<button class="btn" onclick="LS.s(\'oid\',\'\');customer()">Order again</button>':'');
+  if(o.status=='delivered')clearInterval(T.poll)}).catch(function(){})}
+ tick();T.poll=setInterval(tick,3000)}
+
+/* ---------- rider ---------- */
+var Rd={on:false,job:null,last:0,m:null,me:null,lay:[]};
+var LB={placed:'Accept job',accepted:'Picked up the food',pickedup:'Mark delivered',delivered:'Finish'},NX={placed:'accepted',accepted:'pickedup',pickedup:'delivered'};
+function rider(){stop();Rd.on=false;Rd.job=null;Rd.me=null;Rd.lay=[];
+ $('app').innerHTML='<div id="map"></div><div class="top"><span class="brand">Rider</span><div class="r"><button class="lnk" onclick="role()">Switch</button><label class="sw"><span id="st">Offline</span><input type="checkbox" id="tg" onchange="toggle(this.checked)"></label></div></div><div class="card" id="card"></div>';
+ Rd.m=mkmap();rcard()}
+function toggle(on){Rd.on=on;$('st').textContent=on?'Online':'Offline';
+ if(!on){stop();Rd.job=null;clearLay();rcard();return}
+ if(!navigator.geolocation){alert('This phone does not support location.');$('tg').checked=false;Rd.on=false;return}
+ T.watch=navigator.geolocation.watchPosition(function(p){var la=p.coords.latitude,ln=p.coords.longitude,q=[la,ln];
+  if(!Rd.me){Rd.me=dot(Rd.m,q,'#1a73e8',10);Rd.m.setView(q,15)}else Rd.me.setLatLng(q);
+  var j=Rd.job;if(j&&(j.status=='accepted'||j.status=='pickedup')&&Date.now()-Rd.last>4000){Rd.last=Date.now();api('orders/'+j.id,'PATCH',{rider:{lat:la,lng:ln,t:Date.now()}}).catch(function(){})}},
+  function(){alert('Allow location so customers can track you.');$('tg').checked=false;toggle(false)},{enableHighAccuracy:true,maximumAge:2000});
+ try{navigator.wakeLock.request('screen').then(function(w){T.wl=w}).catch(function(){})}catch(e){}
+ T.poll=setInterval(look,3000);rcard()}
+function look(){if(Rd.job)return;api('orders').then(function(all){if(!all||Rd.job)return;var id=Object.keys(all).find(function(k){return all[k].status=='placed'});if(id){Rd.job=Object.assign({id:id},all[id]);rcard()}}).catch(function(){})}
+function rcard(){var j=Rd.job,c=$('card');
+ if(!Rd.on){c.innerHTML='<div class="hint">Go online to receive delivery jobs.</div>';return}
+ if(!j){c.innerHTML='<div class="hint">Looking for orders near you…</div>';return}
+ c.innerHTML='<h2>'+esc(j.rest)+'</h2><div class="meta">'+esc((j.items||[]).join(', '))+' · ₹'+j.total+'</div><div class="meta">'+(j.status=='pickedup'?'Drop: '+esc(j.addr):j.status=='delivered'?'Delivered. Nice work!':'Pickup: '+esc(j.rest))+'</div><div class="meta">Customer phone: <a href="tel:'+esc(j.phone)+'">'+esc(j.phone)+'</a></div><button class="btn" onclick="adv()">'+LB[j.status]+'</button>'}
+function adv(){var j=Rd.job;
+ if(j.status=='delivered'){Rd.job=null;clearLay();rcard();return}
+ var go=function(){var s=NX[j.status];api('orders/'+j.id,'PATCH',{status:s}).then(function(){j.status=s;if(s=='accepted')showJob(j);rcard()}).catch(function(){alert('Could not update the order. Try again.')})};
+ if(j.status=='placed'){api('orders/'+j.id).then(function(o){if(o&&o.status=='placed')go();else{alert('Another rider already took this job.');Rd.job=null;rcard()}}).catch(function(){alert('Could not reach the server. Try again.')})}else go()}
+function showJob(j){clearLay();var a=[j.pickup.lat,j.pickup.lng],b=[j.drop.lat,j.drop.lng];Rd.lay=[dot(Rd.m,a,'#0f6b45'),dot(Rd.m,b,'#d8352a'),L.polyline([a,b],{color:'#555',dashArray:'6'}).addTo(Rd.m)];Rd.m.fitBounds([a,b],{padding:[60,60]})}
+function clearLay(){Rd.lay.forEach(function(l){Rd.m.removeLayer(l)});Rd.lay=[]}
+
+/* ---------- start ---------- */
+if('serviceWorker' in navigator)navigator.serviceWorker.register('sw.js').catch(function(){});
+if(!DB)setup();else{var rl=LS.g('role');if(rl=='c')customer();else if(rl=='r')rider();else role()}
+</script></body></html>
